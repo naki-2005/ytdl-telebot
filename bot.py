@@ -2,7 +2,6 @@ import os
 import sys
 import argparse
 import threading
-import glob
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -24,32 +23,45 @@ class NekoTelegram:
         self.bot_token = bot_token
         self.app = Client("nekobot", api_id=int(api_id), api_hash=api_hash, bot_token=bot_token)
         self.flask_thread = None
+        self.cookies_path = "cookies.txt"
         
         @self.app.on_message(filters.private)
         async def handle_message(client: Client, message: Message):
             await self._handle_message(client, message)
     
     async def _handle_message(self, client: Client, message: Message):
-        if not message.text:
+        if not message.text and not message.document:
             return
         
-        text = message.text.strip()
+        text = message.text.strip() if message.text else ""
 
         if text.startswith("/start"):
-            await message.reply("Bot is running!")
+            await message.reply("Bot is running!\nUsa /set para subir un archivo de cookies (máx 10MB)")
+        
+        elif text.startswith("/set"):
+            await message.reply("Envía el archivo cookies.txt (máx 10MB)")
+        
+        elif message.document:
+            if message.document.file_size > 10 * 1024 * 1024:
+                await message.reply("❌ El archivo es mayor de 10MB")
+                return
+            
+            if message.reply_to_message and message.reply_to_message.text == "Envía el archivo cookies.txt (máx 10MB)":
+                await message.reply("⬇ Guardando cookies...")
+                await message.download(file_name=self.cookies_path)
+                await message.reply("✅ Cookies guardadas correctamente")
         
         elif text.startswith("https://you"):
+            if not os.path.exists(self.cookies_path):
+                await message.reply("❌ No hay cookies guardadas. Usa /set primero")
+                return
+            
             await message.reply("⬇ Procesando tu enlace...")
             try:
-                ruta_mp4 = helper.descargar_video(text)
-                if ruta_mp4:
-                    nombre_base = os.path.splitext(ruta_mp4)[0]
-                    archivos = glob.glob(f"{nombre_base}.*")
-                    
-                    for archivo in archivos:
-                        if os.path.exists(archivo):
-                            await message.reply_document(document=archivo, caption=f"✅ {os.path.basename(archivo)}")
-                            os.remove(archivo)
+                ruta = helper.descargar_video(text, cookies_file=self.cookies_path)
+                if ruta and os.path.exists(ruta):
+                    await message.reply_document(document=ruta, caption="✅ Video descargado")
+                    os.remove(ruta)
                 else:
                     await message.reply("❌ Error al descargar el video")
             except Exception as e:
