@@ -7,7 +7,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 import helper
 
-app = Flask(__name____)
+app = Flask(__name__)
 
 @app.route("/")
 def base_flask():
