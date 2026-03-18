@@ -7,7 +7,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 import helper
 
-app = Flask(__name__)
+app = Flask(__name____)
 
 @app.route("/")
 def base_flask():
@@ -23,7 +23,8 @@ class NekoTelegram:
         self.bot_token = bot_token
         self.app = Client("nekobot", api_id=int(api_id), api_hash=api_hash, bot_token=bot_token)
         self.flask_thread = None
-        self.cookies_path = "cookies.txt"
+        self.cookies_path = os.path.join(os.getcwd(), "cookies.txt")
+        self.esperando_cookies = False
         
         @self.app.on_message(filters.private)
         async def handle_message(client: Client, message: Message):
@@ -39,20 +40,27 @@ class NekoTelegram:
             await message.reply("Bot is running!\nUsa /set para subir un archivo de cookies (máx 10MB)")
         
         elif text.startswith("/set"):
+            self.esperando_cookies = True
             await message.reply("Envía el archivo cookies.txt (máx 10MB)")
         
-        elif message.document:
+        elif message.document and self.esperando_cookies:
             if message.document.file_size > 10 * 1024 * 1024:
                 await message.reply("❌ El archivo es mayor de 10MB")
+                self.esperando_cookies = False
                 return
             
-            if message.reply_to_message and message.reply_to_message.text == "Envía el archivo cookies.txt (máx 10MB)":
-                await message.reply("⬇ Guardando cookies...")
-                await message.download(file_name=self.cookies_path)
+            await message.reply("⬇ Guardando cookies...")
+            await message.download(file_name=self.cookies_path)
+            
+            if os.path.exists(self.cookies_path) and os.path.getsize(self.cookies_path) > 0:
                 await message.reply("✅ Cookies guardadas correctamente")
+                self.esperando_cookies = False
+            else:
+                await message.reply("❌ Error al guardar las cookies")
+                self.esperando_cookies = False
         
         elif text.startswith("https://you"):
-            if not os.path.exists(self.cookies_path):
+            if not os.path.exists(self.cookies_path) or os.path.getsize(self.cookies_path) == 0:
                 await message.reply("❌ No hay cookies guardadas. Usa /set primero")
                 return
             
