@@ -6,7 +6,7 @@ MAX_REINTENTOS = 3
 ESPERA_REINTENTO = 5
 FRAGMENTOS_CONCURRENTES = 3
 
-def descargar_video(url, output_path=None):
+def descargar_video(url, output_path=None, cookies_file=None):
     for intento in range(1, MAX_REINTENTOS + 1):
         try:
             print(f"⬇ Intento {intento}/{MAX_REINTENTOS}...")
@@ -25,6 +25,9 @@ def descargar_video(url, output_path=None):
                 'concurrent_fragment_downloads': FRAGMENTOS_CONCURRENTES,
                 'retries': 10
             }
+            
+            if cookies_file and os.path.exists(cookies_file):
+                ydl_opts['cookiefile'] = cookies_file
             
             with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
                 info = ydl.extract_info(url, download=False)
