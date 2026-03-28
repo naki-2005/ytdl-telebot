@@ -3,6 +3,8 @@ import sys
 import argparse
 import threading
 import yt_dlp
+import uuid
+import shutil
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -36,10 +38,11 @@ def obtener_info_youtube(url):
         return {'duracion': 0, 'ancho': 0, 'alto': 0, 'titulo': ''}
 
 class NekoTelegram:
-    def __init__(self, api_id, api_hash, bot_token):
+    def __init__(self, api_id, api_hash, bot_token, debug=False):
         self.api_id = api_id
         self.api_hash = api_hash
         self.bot_token = bot_token
+        self.debug = debug
         self.app = Client("nekobot", api_id=int(api_id), api_hash=api_hash, bot_token=bot_token)
         self.flask_thread = None
         
@@ -58,28 +61,36 @@ class NekoTelegram:
         
         elif text.startswith("https://you"):
             await message.reply("⬇ Procesando tu enlace...")
+            
+            temp_dir = None
+            
             try:
                 info = obtener_info_youtube(text)
                 
-                resultado = helper.descargar_video(text)
+                temp_dir = os.path.join(os.getcwd(), f"temp_{uuid.uuid4().hex}")
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                if self.debug:
+                    await message.reply(f"🐛 Debug: Carpeta temporal creada en {temp_dir}")
+                
+                resultado = helper.descargar_video(text, output_path=temp_dir)
                 
                 if resultado:
                     ruta_video, ruta_thumb = resultado
                     
+                    if self.debug:
+                        await message.reply(f"🐛 Debug: Video: {ruta_video}")
+                        if ruta_thumb:
+                            await message.reply(f"🐛 Debug: Thumb: {ruta_thumb}")
+                        else:
+                            await message.reply(f"🐛 Debug: No se encontró miniatura")
+                    
                     if ruta_video and os.path.exists(ruta_video):
-                        try:
-                            await client.send_video(
-                                chat_id=message.chat.id,
-                                video=ruta_video,
-                                file_name=os.path.basename(ruta_video),
-                                duration=info['duracion'],
-                                width=info['ancho'],
-                                height=info['alto'],
-                                thumb=ruta_thumb if ruta_thumb and os.path.exists(ruta_thumb) else None,
-                                caption=f"✅ {info['titulo']}"
-                            )
-                        except Exception as e:
-                            if "thumbnail" in str(e).lower():
+                        if ruta_thumb and os.path.exists(ruta_thumb):
+                            try:
+                                with open(ruta_thumb, 'rb') as f:
+                                    thumb_data = f.read()
+                                
                                 await client.send_video(
                                     chat_id=message.chat.id,
                                     video=ruta_video,
@@ -87,20 +98,52 @@ class NekoTelegram:
                                     duration=info['duracion'],
                                     width=info['ancho'],
                                     height=info['alto'],
-                                    caption=f"✅ {info['titulo']}\n⚠️ Miniatura no disponible"
+                                    thumb=thumb_data,
+                                    caption=f"✅ {info['titulo']}"
                                 )
-                            else:
-                                raise e
+                                if self.debug:
+                                    await message.reply(f"🐛 Debug: Video enviado con miniatura")
+                            except Exception as e:
+                                if self.debug:
+                                    await message.reply(f"🐛 Debug: Error con miniatura: {str(e)}")
+                                
+                                await client.send_video(
+                                    chat_id=message.chat.id,
+                                    video=ruta_video,
+                                    file_name=os.path.basename(ruta_video),
+                                    duration=info['duracion'],
+                                    width=info['ancho'],
+                                    height=info['alto'],
+                                    caption=f"✅ {info['titulo']}"
+                                )
+                        else:
+                            await client.send_video(
+                                chat_id=message.chat.id,
+                                video=ruta_video,
+                                file_name=os.path.basename(ruta_video),
+                                duration=info['duracion'],
+                                width=info['ancho'],
+                                height=info['alto'],
+                                caption=f"✅ {info['titulo']}"
+                            )
                         
-                        os.remove(ruta_video)
-                        if ruta_thumb and os.path.exists(ruta_thumb):
-                            os.remove(ruta_thumb)
+                        if not self.debug:
+                            if os.path.exists(ruta_video):
+                                os.remove(ruta_video)
+                            if ruta_thumb and os.path.exists(ruta_thumb):
+                                os.remove(ruta_thumb)
+                            if temp_dir and os.path.exists(temp_dir):
+                                shutil.rmtree(temp_dir)
+                        else:
+                            await message.reply(f"🐛 Debug: Modo debug activado. Archivos conservados en: {temp_dir}")
                     else:
                         await message.reply("❌ No se encontró el archivo de video")
                 else:
                     await message.reply("❌ Error al descargar el video")
             except Exception as e:
                 await message.reply(f"❌ Error: {str(e)}")
+                if self.debug and temp_dir:
+                    await message.reply(f"🐛 Debug: Error, archivos conservados en: {temp_dir}")
     
     def start_flask(self):
         if self.flask_thread and self.flask_thread.is_alive():
@@ -118,6 +161,7 @@ def main():
     parser.add_argument("-H", "--hash", help="API Hash")
     parser.add_argument("-T", "--token", help="Bot Token")
     parser.add_argument("-F", "--flask", action="store_true", help="Incluir Flask")
+    parser.add_argument("-D", "--debug", action="store_true", help="Modo debug: no eliminar archivos")
     args = parser.parse_args()
 
     api_id = args.api or os.environ.get("API_ID")
@@ -128,7 +172,7 @@ def main():
         print("Error: Faltan credenciales")
         sys.exit(1)
     
-    bot = NekoTelegram(api_id, api_hash, bot_token)
+    bot = NekoTelegram(api_id, api_hash, bot_token, debug=args.debug)
 
     if args.flask:
         bot.start_flask()
