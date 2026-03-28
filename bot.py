@@ -18,18 +18,23 @@ def base_flask():
 def run_flask():
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
 
-def obtener_info_video(ruta_video):
+def obtener_info_youtube(url):
     try:
-        opciones = {'quiet': True}
+        opciones = {
+            'quiet': True,
+            'skip_download': True,
+        }
         with yt_dlp.YoutubeDL(opciones) as ydl:
-            info = ydl.extract_info(ruta_video, download=False)
+            info = ydl.extract_info(url, download=False)
             return {
                 'duracion': info.get('duration', 0),
                 'ancho': info.get('width', 0),
-                'alto': info.get('height', 0)
+                'alto': info.get('height', 0),
+                'titulo': info.get('title', '')
             }
-    except:
-        return {'duracion': 0, 'ancho': 0, 'alto': 0}
+    except Exception as e:
+        print(f"Error obteniendo info: {e}")
+        return {'duracion': 0, 'ancho': 0, 'alto': 0, 'titulo': ''}
 
 class NekoTelegram:
     def __init__(self, api_id, api_hash, bot_token):
@@ -55,6 +60,8 @@ class NekoTelegram:
         elif text.startswith("https://you"):
             await message.reply("⬇ Procesando tu enlace...")
             try:
+                info = obtener_info_youtube(text)
+                
                 ruta_mp4 = helper.descargar_video(text)
                 if ruta_mp4:
                     nombre_base = os.path.splitext(ruta_mp4)[0]
@@ -62,14 +69,12 @@ class NekoTelegram:
                     thumb_path = None
                     
                     for archivo in archivos:
-                        if os.path.exists(archivo):
-                            if archivo.endswith('.jpg'):
-                                thumb_path = archivo
-                    
-                    info = obtener_info_video(ruta_mp4)
+                        if os.path.exists(archivo) and archivo.endswith(('.jpg', '.webp')):
+                            thumb_path = archivo
+                            break
                     
                     for archivo in archivos:
-                        if os.path.exists(archivo) and not archivo.endswith('.jpg'):
+                        if os.path.exists(archivo) and not archivo.endswith(('.jpg', '.webp')):
                             await client.send_video(
                                 chat_id=message.chat.id,
                                 video=archivo,
@@ -78,7 +83,7 @@ class NekoTelegram:
                                 width=info['ancho'],
                                 height=info['alto'],
                                 thumb=thumb_path,
-                                caption=f"✅ {os.path.basename(archivo)}"
+                                caption=f"✅ {info['titulo']}"
                             )
                             
                             os.remove(archivo)
