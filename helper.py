@@ -1,6 +1,7 @@
 import yt_dlp
 import os
 import time
+import glob
 
 MAX_REINTENTOS = 3
 ESPERA_REINTENTO = 5
@@ -39,11 +40,21 @@ def descargar_video(url, output_path=None):
                     ruta_video = f"{titulo}.{extension}"
                 
                 ruta_thumb = None
-                for thumb_ext in ['.jpg', '.webp']:
-                    posible_thumb = ruta_video.replace(f".{extension}", thumb_ext)
-                    if os.path.exists(posible_thumb):
-                        ruta_thumb = posible_thumb
-                        break
+                nombre_base = os.path.splitext(ruta_video)[0]
+                
+                archivos_thumb = glob.glob(f"{nombre_base}.jpg")
+                if archivos_thumb:
+                    ruta_thumb = archivos_thumb[0]
+                else:
+                    archivos_thumb = glob.glob(f"{nombre_base}.webp")
+                    if archivos_thumb:
+                        ruta_thumb = archivos_thumb[0]
+                
+                if ruta_thumb and os.path.exists(ruta_thumb):
+                    print(f"✅ Miniatura encontrada: {ruta_thumb}")
+                else:
+                    print(f"⚠️ No se encontró miniatura para: {titulo}")
+                    ruta_thumb = None
                 
                 print(f"✅ Video descargado: {ruta_video}")
                 return ruta_video, ruta_thumb
