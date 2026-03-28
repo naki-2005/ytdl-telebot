@@ -87,35 +87,18 @@ class NekoTelegram:
                     
                     if ruta_video and os.path.exists(ruta_video):
                         if ruta_thumb and os.path.exists(ruta_thumb):
-                            try:
-                                with open(ruta_thumb, 'rb') as f:
-                                    thumb_data = f.read()
-                                
-                                await client.send_video(
-                                    chat_id=message.chat.id,
-                                    video=ruta_video,
-                                    file_name=os.path.basename(ruta_video),
-                                    duration=info['duracion'],
-                                    width=info['ancho'],
-                                    height=info['alto'],
-                                    thumb=thumb_data,
-                                    caption=f"✅ {info['titulo']}"
-                                )
-                                if self.debug:
-                                    await message.reply(f"🐛 Debug: Video enviado con miniatura")
-                            except Exception as e:
-                                if self.debug:
-                                    await message.reply(f"🐛 Debug: Error con miniatura: {str(e)}")
-                                
-                                await client.send_video(
-                                    chat_id=message.chat.id,
-                                    video=ruta_video,
-                                    file_name=os.path.basename(ruta_video),
-                                    duration=info['duracion'],
-                                    width=info['ancho'],
-                                    height=info['alto'],
-                                    caption=f"✅ {info['titulo']}"
-                                )
+                            await client.send_video(
+                                chat_id=message.chat.id,
+                                video=ruta_video,
+                                file_name=os.path.basename(ruta_video),
+                                duration=info['duracion'],
+                                width=info['ancho'],
+                                height=info['alto'],
+                                thumb=ruta_thumb,
+                                caption=f"✅ {info['titulo']}"
+                            )
+                            if self.debug:
+                                await message.reply(f"🐛 Debug: Video enviado con miniatura")
                         else:
                             await client.send_video(
                                 chat_id=message.chat.id,
@@ -126,6 +109,8 @@ class NekoTelegram:
                                 height=info['alto'],
                                 caption=f"✅ {info['titulo']}"
                             )
+                            if self.debug:
+                                await message.reply(f"🐛 Debug: Video enviado sin miniatura")
                         
                         if not self.debug:
                             if os.path.exists(ruta_video):
