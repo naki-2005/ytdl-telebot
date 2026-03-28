@@ -3,6 +3,7 @@ import sys
 import argparse
 import threading
 import glob
+import yt_dlp
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -16,6 +17,19 @@ def base_flask():
 
 def run_flask():
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+
+def obtener_info_video(ruta_video):
+    try:
+        opciones = {'quiet': True}
+        with yt_dlp.YoutubeDL(opciones) as ydl:
+            info = ydl.extract_info(ruta_video, download=False)
+            return {
+                'duracion': info.get('duration', 0),
+                'ancho': info.get('width', 0),
+                'alto': info.get('height', 0)
+            }
+    except:
+        return {'duracion': 0, 'ancho': 0, 'alto': 0}
 
 class NekoTelegram:
     def __init__(self, api_id, api_hash, bot_token):
@@ -45,11 +59,31 @@ class NekoTelegram:
                 if ruta_mp4:
                     nombre_base = os.path.splitext(ruta_mp4)[0]
                     archivos = glob.glob(f"{nombre_base}.*")
+                    thumb_path = None
                     
                     for archivo in archivos:
                         if os.path.exists(archivo):
-                            await message.reply_document(document=archivo, caption=f"✅ {os.path.basename(archivo)}")
+                            if archivo.endswith('.jpg'):
+                                thumb_path = archivo
+                    
+                    info = obtener_info_video(ruta_mp4)
+                    
+                    for archivo in archivos:
+                        if os.path.exists(archivo) and not archivo.endswith('.jpg'):
+                            await client.send_video(
+                                chat_id=message.chat.id,
+                                video=archivo,
+                                file_name=os.path.basename(archivo),
+                                duration=info['duracion'],
+                                width=info['ancho'],
+                                height=info['alto'],
+                                thumb=thumb_path,
+                                caption=f"✅ {os.path.basename(archivo)}"
+                            )
+                            
                             os.remove(archivo)
+                            if thumb_path and os.path.exists(thumb_path):
+                                os.remove(thumb_path)
                 else:
                     await message.reply("❌ Error al descargar el video")
             except Exception as e:
