@@ -1,3 +1,4 @@
+Pillow
 pyrogram
 nest_asyncio
 beautifulsoup4
