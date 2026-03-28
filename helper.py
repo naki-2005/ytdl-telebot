@@ -2,10 +2,29 @@ import yt_dlp
 import os
 import time
 import glob
+from PIL import Image
 
 MAX_REINTENTOS = 3
 ESPERA_REINTENTO = 5
 FRAGMENTOS_CONCURRENTES = 3
+
+def convertir_webp_a_jpg(ruta_webp):
+    try:
+        ruta_jpg = ruta_webp.replace('.webp', '.jpg')
+        with Image.open(ruta_webp) as img:
+            if img.mode in ('RGBA', 'LA', 'P'):
+                fondo = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                fondo.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                fondo.save(ruta_jpg, 'JPEG', quality=95)
+            else:
+                img.convert('RGB').save(ruta_jpg, 'JPEG', quality=95)
+        os.remove(ruta_webp)
+        return ruta_jpg
+    except Exception as e:
+        print(f"Error convirtiendo WEBP a JPG: {e}")
+        return None
 
 def descargar_video(url, output_path=None):
     for intento in range(1, MAX_REINTENTOS + 1):
@@ -45,16 +64,20 @@ def descargar_video(url, output_path=None):
                 archivos_thumb = glob.glob(f"{nombre_base}.jpg")
                 if archivos_thumb:
                     ruta_thumb = archivos_thumb[0]
+                    print(f"✅ Miniatura JPG encontrada: {ruta_thumb}")
                 else:
                     archivos_thumb = glob.glob(f"{nombre_base}.webp")
                     if archivos_thumb:
-                        ruta_thumb = archivos_thumb[0]
-                
-                if ruta_thumb and os.path.exists(ruta_thumb):
-                    print(f"✅ Miniatura encontrada: {ruta_thumb}")
-                else:
-                    print(f"⚠️ No se encontró miniatura para: {titulo}")
-                    ruta_thumb = None
+                        print(f"🔄 Convirtiendo WEBP a JPG: {archivos_thumb[0]}")
+                        ruta_thumb = convertir_webp_a_jpg(archivos_thumb[0])
+                        if ruta_thumb:
+                            print(f"✅ Miniatura convertida a JPG: {ruta_thumb}")
+                        else:
+                            print(f"⚠️ Error al convertir miniatura")
+                            ruta_thumb = None
+                    else:
+                        print(f"⚠️ No se encontró miniatura para: {titulo}")
+                        ruta_thumb = None
                 
                 print(f"✅ Video descargado: {ruta_video}")
                 return ruta_video, ruta_thumb
