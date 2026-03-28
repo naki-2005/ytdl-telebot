@@ -2,7 +2,6 @@ import os
 import sys
 import argparse
 import threading
-import glob
 import yt_dlp
 from flask import Flask
 from pyrogram import Client, filters
@@ -62,33 +61,28 @@ class NekoTelegram:
             try:
                 info = obtener_info_youtube(text)
                 
-                ruta_mp4 = helper.descargar_video(text)
-                if ruta_mp4:
-                    nombre_base = os.path.splitext(ruta_mp4)[0]
-                    archivos = glob.glob(f"{nombre_base}.*")
-                    thumb_path = None
+                resultado = helper.descargar_video(text)
+                
+                if resultado:
+                    ruta_video, ruta_thumb = resultado
                     
-                    for archivo in archivos:
-                        if os.path.exists(archivo) and archivo.endswith(('.jpg', '.webp')):
-                            thumb_path = archivo
-                            break
-                    
-                    for archivo in archivos:
-                        if os.path.exists(archivo) and not archivo.endswith(('.jpg', '.webp')):
-                            await client.send_video(
-                                chat_id=message.chat.id,
-                                video=archivo,
-                                file_name=os.path.basename(archivo),
-                                duration=info['duracion'],
-                                width=info['ancho'],
-                                height=info['alto'],
-                                thumb=thumb_path,
-                                caption=f"✅ {info['titulo']}"
-                            )
-                            
-                            os.remove(archivo)
-                            if thumb_path and os.path.exists(thumb_path):
-                                os.remove(thumb_path)
+                    if ruta_video and os.path.exists(ruta_video):
+                        await client.send_video(
+                            chat_id=message.chat.id,
+                            video=ruta_video,
+                            file_name=os.path.basename(ruta_video),
+                            duration=info['duracion'],
+                            width=info['ancho'],
+                            height=info['alto'],
+                            thumb=ruta_thumb if ruta_thumb and os.path.exists(ruta_thumb) else None,
+                            caption=f"✅ {info['titulo']}"
+                        )
+                        
+                        os.remove(ruta_video)
+                        if ruta_thumb and os.path.exists(ruta_thumb):
+                            os.remove(ruta_thumb)
+                    else:
+                        await message.reply("❌ No se encontró el archivo de video")
                 else:
                     await message.reply("❌ Error al descargar el video")
             except Exception as e:
