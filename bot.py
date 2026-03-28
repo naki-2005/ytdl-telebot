@@ -95,7 +95,7 @@ class NekoTelegram:
                                 width=info['ancho'],
                                 height=info['alto'],
                                 thumb=ruta_thumb,
-                                caption=f"✅ {info['titulo']}"
+                                caption=f"{info['titulo']}"
                             )
                             if self.debug:
                                 await message.reply(f"🐛 Debug: Video enviado con miniatura")
@@ -107,7 +107,7 @@ class NekoTelegram:
                                 duration=info['duracion'],
                                 width=info['ancho'],
                                 height=info['alto'],
-                                caption=f"✅ {info['titulo']}"
+                                caption=f"{info['titulo']}"
                             )
                             if self.debug:
                                 await message.reply(f"🐛 Debug: Video enviado sin miniatura")
