@@ -67,16 +67,30 @@ class NekoTelegram:
                     ruta_video, ruta_thumb = resultado
                     
                     if ruta_video and os.path.exists(ruta_video):
-                        await client.send_video(
-                            chat_id=message.chat.id,
-                            video=ruta_video,
-                            file_name=os.path.basename(ruta_video),
-                            duration=info['duracion'],
-                            width=info['ancho'],
-                            height=info['alto'],
-                            thumb=ruta_thumb if ruta_thumb and os.path.exists(ruta_thumb) else None,
-                            caption=f"✅ {info['titulo']}"
-                        )
+                        try:
+                            await client.send_video(
+                                chat_id=message.chat.id,
+                                video=ruta_video,
+                                file_name=os.path.basename(ruta_video),
+                                duration=info['duracion'],
+                                width=info['ancho'],
+                                height=info['alto'],
+                                thumb=ruta_thumb if ruta_thumb and os.path.exists(ruta_thumb) else None,
+                                caption=f"✅ {info['titulo']}"
+                            )
+                        except Exception as e:
+                            if "thumbnail" in str(e).lower():
+                                await client.send_video(
+                                    chat_id=message.chat.id,
+                                    video=ruta_video,
+                                    file_name=os.path.basename(ruta_video),
+                                    duration=info['duracion'],
+                                    width=info['ancho'],
+                                    height=info['alto'],
+                                    caption=f"✅ {info['titulo']}\n⚠️ Miniatura no disponible"
+                                )
+                            else:
+                                raise e
                         
                         os.remove(ruta_video)
                         if ruta_thumb and os.path.exists(ruta_thumb):
