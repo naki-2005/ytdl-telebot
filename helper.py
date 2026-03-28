@@ -18,28 +18,35 @@ def descargar_video(url, output_path=None):
             
             ydl_opts = {
                 'outtmpl': outtmpl,
-                'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'quiet': True,
                 'no_warnings': True,
                 'continuedl': True,
                 'concurrent_fragment_downloads': FRAGMENTOS_CONCURRENTES,
-                'retries': 10
+                'retries': 10,
+                'writethumbnail': True,
+                'convert_thumbnails': 'jpg'
             }
             
-            with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
-                info = ydl.extract_info(url, download=False)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
                 titulo = info.get('title', 'video')
+                extension = info.get('ext', 'mp4')
                 
                 if output_path:
-                    ruta_esperada = os.path.join(output_path, f"{titulo}.mp4")
+                    ruta_video = os.path.join(output_path, f"{titulo}.{extension}")
                 else:
-                    ruta_esperada = f"{titulo}.mp4"
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            
-            print(f"✅ Video descargado: {ruta_esperada}")
-            return ruta_esperada
+                    ruta_video = f"{titulo}.{extension}"
+                
+                ruta_thumb = None
+                for thumb_ext in ['.jpg', '.webp']:
+                    posible_thumb = ruta_video.replace(f".{extension}", thumb_ext)
+                    if os.path.exists(posible_thumb):
+                        ruta_thumb = posible_thumb
+                        break
+                
+                print(f"✅ Video descargado: {ruta_video}")
+                return ruta_video, ruta_thumb
             
         except Exception as e:
             print(f"❌ Error: {e}")
