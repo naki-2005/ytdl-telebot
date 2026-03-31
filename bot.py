@@ -178,7 +178,13 @@ class NekoTelegram:
         user_id = callback_query.from_user.id
         
         if data.startswith("download_"):
-            callback_id = data.replace("download_", "")
+            parts = data.split("_")
+            if len(parts) >= 3:
+                callback_id = parts[1]
+                format_id = "_".join(parts[2:])
+            else:
+                await callback_query.answer("Error en el formato")
+                return
             
             if callback_id in download_options:
                 info = download_options[callback_id]
@@ -192,91 +198,87 @@ class NekoTelegram:
                     temp_dir = os.path.join(os.getcwd(), f"temp_{uuid.uuid4().hex}")
                     os.makedirs(temp_dir, exist_ok=True)
                     
-                    resultado = helper.descargar_video_con_formato(info['url'], info['format_id'], output_path=temp_dir)
+                    resultado = helper.descargar_video_con_formato(info['url'], format_id, output_path=temp_dir)
                     
-                    if resultado:
+                    if resultado and resultado[0] and os.path.exists(resultado[0]):
                         ruta_video, ruta_thumb = resultado
+                        tamano_video = os.path.getsize(ruta_video) / (1024 * 1024)
                         
-                        if ruta_video and os.path.exists(ruta_video):
-                            tamano_video = os.path.getsize(ruta_video) / (1024 * 1024)
+                        if tamano_video > self.tamano_limite:
+                            await callback_query.message.reply(f"📦 Video de {tamano_video:.1f} MB excede el límite de {self.tamano_limite} MB. Dividiendo en partes...")
                             
-                            if tamano_video > self.tamano_limite:
-                                await callback_query.message.reply(f"📦 Video de {tamano_video:.1f} MB excede el límite de {self.tamano_limite} MB. Dividiendo en partes...")
+                            nombre_base = os.path.splitext(os.path.basename(ruta_video))[0]
+                            partes = dividir_video_por_tamano(ruta_video, self.tamano_limite, temp_dir, nombre_base)
+                            
+                            if partes:
+                                await callback_query.message.reply(f"✅ Video dividido en {len(partes)} partes")
                                 
-                                nombre_base = os.path.splitext(os.path.basename(ruta_video))[0]
-                                partes = dividir_video_por_tamano(ruta_video, self.tamano_limite, temp_dir, nombre_base)
-                                
-                                if partes:
-                                    await callback_query.message.reply(f"✅ Video dividido en {len(partes)} partes")
+                                for idx, parte in enumerate(partes):
+                                    duracion_parte = obtener_duracion_video(parte)
+                                    tamano_parte = os.path.getsize(parte) / (1024 * 1024)
                                     
-                                    for idx, parte in enumerate(partes):
-                                        duracion_parte = obtener_duracion_video(parte)
-                                        tamano_parte = os.path.getsize(parte) / (1024 * 1024)
-                                        
-                                        caption = f"📹 {info['titulo']} - Parte {idx+1}/{len(partes)}\n⏱️ Duración: {int(duracion_parte // 60)}:{int(duracion_parte % 60):02d}\n📦 Tamaño: {tamano_parte:.1f} MB"
-                                        
-                                        if ruta_thumb and os.path.exists(ruta_thumb):
-                                            with open(ruta_thumb, 'rb') as f:
-                                                thumb_data = f.read()
-                                            await client.send_video(
-                                                chat_id=callback_query.message.chat.id,
-                                                video=parte,
-                                                file_name=os.path.basename(parte),
-                                                duration=int(duracion_parte),
-                                                width=info['ancho'],
-                                                height=info['alto'],
-                                                thumb=thumb_data,
-                                                caption=caption
-                                            )
-                                        else:
-                                            await client.send_video(
-                                                chat_id=callback_query.message.chat.id,
-                                                video=parte,
-                                                file_name=os.path.basename(parte),
-                                                duration=int(duracion_parte),
-                                                width=info['ancho'],
-                                                height=info['alto'],
-                                                caption=caption
-                                            )
-                                        
-                                        if not self.debug:
-                                            os.remove(parte)
-                                else:
-                                    await callback_query.message.reply("❌ Error al dividir el video")
+                                    caption = f"📹 {info['titulo']} - Parte {idx+1}/{len(partes)}\n⏱️ Duración: {int(duracion_parte // 60)}:{int(duracion_parte % 60):02d}\n📦 Tamaño: {tamano_parte:.1f} MB"
+                                    
+                                    if ruta_thumb and os.path.exists(ruta_thumb):
+                                        with open(ruta_thumb, 'rb') as f:
+                                            thumb_data = f.read()
+                                        await client.send_video(
+                                            chat_id=callback_query.message.chat.id,
+                                            video=parte,
+                                            file_name=os.path.basename(parte),
+                                            duration=int(duracion_parte),
+                                            width=info['ancho'],
+                                            height=info['alto'],
+                                            thumb=thumb_data,
+                                            caption=caption
+                                        )
+                                    else:
+                                        await client.send_video(
+                                            chat_id=callback_query.message.chat.id,
+                                            video=parte,
+                                            file_name=os.path.basename(parte),
+                                            duration=int(duracion_parte),
+                                            width=info['ancho'],
+                                            height=info['alto'],
+                                            caption=caption
+                                        )
+                                    
+                                    if not self.debug:
+                                        os.remove(parte)
                             else:
-                                if ruta_thumb and os.path.exists(ruta_thumb):
-                                    with open(ruta_thumb, 'rb') as f:
-                                        thumb_data = f.read()
-                                    await client.send_video(
-                                        chat_id=callback_query.message.chat.id,
-                                        video=ruta_video,
-                                        file_name=os.path.basename(ruta_video),
-                                        duration=info['duracion'],
-                                        width=info['ancho'],
-                                        height=info['alto'],
-                                        thumb=thumb_data,
-                                        caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
-                                    )
-                                else:
-                                    await client.send_video(
-                                        chat_id=callback_query.message.chat.id,
-                                        video=ruta_video,
-                                        file_name=os.path.basename(ruta_video),
-                                        duration=info['duracion'],
-                                        width=info['ancho'],
-                                        height=info['alto'],
-                                        caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
-                                    )
-                            
-                            if not self.debug:
-                                if os.path.exists(ruta_video):
-                                    os.remove(ruta_video)
-                                if ruta_thumb and os.path.exists(ruta_thumb):
-                                    os.remove(ruta_thumb)
-                                if temp_dir and os.path.exists(temp_dir):
-                                    shutil.rmtree(temp_dir)
+                                await callback_query.message.reply("❌ Error al dividir el video")
                         else:
-                            await callback_query.message.reply("❌ No se encontró el archivo de video")
+                            if ruta_thumb and os.path.exists(ruta_thumb):
+                                with open(ruta_thumb, 'rb') as f:
+                                    thumb_data = f.read()
+                                await client.send_video(
+                                    chat_id=callback_query.message.chat.id,
+                                    video=ruta_video,
+                                    file_name=os.path.basename(ruta_video),
+                                    duration=info['duracion'],
+                                    width=info['ancho'],
+                                    height=info['alto'],
+                                    thumb=thumb_data,
+                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                                )
+                            else:
+                                await client.send_video(
+                                    chat_id=callback_query.message.chat.id,
+                                    video=ruta_video,
+                                    file_name=os.path.basename(ruta_video),
+                                    duration=info['duracion'],
+                                    width=info['ancho'],
+                                    height=info['alto'],
+                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                                )
+                        
+                        if not self.debug:
+                            if os.path.exists(ruta_video):
+                                os.remove(ruta_video)
+                            if ruta_thumb and os.path.exists(ruta_thumb):
+                                os.remove(ruta_thumb)
+                            if temp_dir and os.path.exists(temp_dir):
+                                shutil.rmtree(temp_dir)
                     else:
                         await callback_query.message.reply("❌ Error al descargar el video")
                         
