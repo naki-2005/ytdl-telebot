@@ -7,25 +7,12 @@ import uuid
 import shutil
 import subprocess
 import math
-import random
-import string
-import asyncio
 from flask import Flask
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import Message
 import helper
 
 app = Flask(__name__)
-
-download_options = {}
-active_callbacks = {}
-
-async def cleanup_callback(callback_id, chat_id, message_id):
-    await asyncio.sleep(60)
-    if callback_id in active_callbacks:
-        del active_callbacks[callback_id]
-    if callback_id in download_options:
-        del download_options[callback_id]
 
 @app.route("/")
 def base_flask():
@@ -42,57 +29,15 @@ def obtener_info_youtube(url):
         }
         with yt_dlp.YoutubeDL(opciones) as ydl:
             info = ydl.extract_info(url, download=False)
-            formats = []
-            
-            for f in info.get('formats', []):
-                height = f.get('height', 0)
-                if not height:
-                    continue
-                
-                format_id = f['format_id']
-                vcodec = f.get('vcodec', 'none')
-                acodec = f.get('acodec', 'none')
-                filesize = f.get('filesize') or f.get('filesize_approx', 0)
-                size_mb = filesize / (1024 * 1024) if filesize else None
-                
-                if vcodec != 'none' and acodec != 'none':
-                    format_type = "📹"
-                elif vcodec != 'none' and acodec == 'none':
-                    format_type = "🎬"
-                elif vcodec == 'none' and acodec != 'none':
-                    format_type = "🎵"
-                else:
-                    continue
-                
-                formats.append({
-                    'format_id': format_id,
-                    'height': height,
-                    'size_mb': size_mb,
-                    'type': format_type,
-                    'vcodec': vcodec,
-                    'acodec': acodec
-                })
-            
-            formats.sort(key=lambda x: x['height'], reverse=True)
-            
-            unique_formats = []
-            seen = set()
-            for f in formats:
-                key = f"{f['height']}_{f['type']}"
-                if key not in seen:
-                    seen.add(key)
-                    unique_formats.append(f)
-            
             return {
                 'duracion': info.get('duration', 0),
                 'ancho': info.get('width', 0),
                 'alto': info.get('height', 0),
-                'titulo': info.get('title', ''),
-                'formats': unique_formats[:10]
+                'titulo': info.get('title', '')
             }
     except Exception as e:
         print(f"Error obteniendo info: {e}")
-        return {'duracion': 0, 'ancho': 0, 'alto': 0, 'titulo': '', 'formats': []}
+        return {'duracion': 0, 'ancho': 0, 'alto': 0, 'titulo': ''}
 
 def obtener_bitrate_video(ruta_video):
     try:
@@ -139,6 +84,8 @@ def dividir_video_por_tamano(ruta_video, tamano_mb, output_dir, nombre_base):
         num_partes = math.ceil(duracion_total / segundos_por_parte)
         duracion_parte = duracion_total / num_partes
         
+        partes_generadas = []
+        
         for i in range(num_partes):
             inicio = i * duracion_parte
             duracion = duracion_parte
@@ -159,14 +106,11 @@ def dividir_video_por_tamano(ruta_video, tamano_mb, output_dir, nombre_base):
             ]
             
             subprocess.run(cmd, capture_output=True)
+            
+            if os.path.exists(salida):
+                partes_generadas.append(salida)
         
-        partes_generadas = []
-        for archivo in os.listdir(output_dir):
-            if archivo.startswith(nombre_base) and "_parte_" in archivo and archivo.endswith('.mp4'):
-                partes_generadas.append(os.path.join(output_dir, archivo))
-        
-        partes_generadas.sort()
-        return partes_generadas if partes_generadas else None
+        return partes_generadas
     except:
         return None
 
@@ -184,49 +128,57 @@ class NekoTelegram:
         @self.app.on_message(filters.private)
         async def handle_message(client: Client, message: Message):
             await self._handle_message(client, message)
-        
-        @self.app.on_callback_query()
-        async def handle_callback(client: Client, callback_query: CallbackQuery):
-            await self._handle_callback(client, callback_query)
     
-    async def _handle_callback(self, client: Client, callback_query: CallbackQuery):
-        data = callback_query.data
+    async def _handle_message(self, client: Client, message: Message):
+        if not message.text:
+            return
         
-        if data.startswith("download_"):
-            parts = data.split("_")
-            if len(parts) >= 3:
-                callback_id = parts[1]
-                format_id = "_".join(parts[2:])
-            else:
-                await callback_query.answer("Error en el formato")
-                return
+        text = message.text.strip()
+
+        if text.startswith("/start"):
+            await message.reply("Bot is running!")
+        
+        elif text.startswith("https://you"):
+            await message.reply("⬇ Procesando tu enlace...")
             
-            if callback_id in download_options:
-                info = download_options[callback_id]
+            temp_dir = None
+            
+            try:
+                info = obtener_info_youtube(text)
                 
-                await callback_query.answer("⬇ Iniciando descarga...")
-                await callback_query.message.edit_text("⬇ Procesando tu descarga...")
+                temp_dir = os.path.join(os.getcwd(), f"temp_{uuid.uuid4().hex}")
+                os.makedirs(temp_dir, exist_ok=True)
                 
-                temp_dir = None
+                if self.debug:
+                    await message.reply(f"🐛 Debug: Carpeta temporal creada en {temp_dir}")
+                    await message.reply(f"🐛 Debug: Límite de tamaño: {self.tamano_limite} MB")
                 
-                try:
-                    temp_dir = os.path.join(os.getcwd(), f"temp_{uuid.uuid4().hex}")
-                    os.makedirs(temp_dir, exist_ok=True)
+                resultado = helper.descargar_video(text, output_path=temp_dir)
+                
+                if resultado:
+                    ruta_video, ruta_thumb = resultado
                     
-                    resultado = helper.descargar_video_con_formato(info['url'], format_id, output_path=temp_dir)
+                    if self.debug:
+                        await message.reply(f"🐛 Debug: Video: {ruta_video}")
+                        if ruta_thumb:
+                            await message.reply(f"🐛 Debug: Thumb: {ruta_thumb}")
+                        else:
+                            await message.reply(f"🐛 Debug: No se encontró miniatura")
                     
-                    if resultado and resultado[0] and os.path.exists(resultado[0]):
-                        ruta_video, ruta_thumb = resultado
+                    if ruta_video and os.path.exists(ruta_video):
                         tamano_video = os.path.getsize(ruta_video) / (1024 * 1024)
                         
+                        if self.debug:
+                            await message.reply(f"🐛 Debug: Tamaño del video: {tamano_video:.1f} MB")
+                        
                         if tamano_video > self.tamano_limite:
-                            await callback_query.message.reply(f"📦 Video de {tamano_video:.1f} MB excede el límite de {self.tamano_limite} MB. Dividiendo en partes...")
+                            await message.reply(f"📦 Video de {tamano_video:.1f} MB excede el límite de {self.tamano_limite} MB. Dividiendo en partes...")
                             
                             nombre_base = os.path.splitext(os.path.basename(ruta_video))[0]
                             partes = dividir_video_por_tamano(ruta_video, self.tamano_limite, temp_dir, nombre_base)
                             
                             if partes:
-                                await callback_query.message.reply(f"✅ Video dividido en {len(partes)} partes")
+                                await message.reply(f"✅ Video dividido en {len(partes)} partes")
                                 
                                 for idx, parte in enumerate(partes):
                                     duracion_parte = obtener_duracion_video(parte)
@@ -235,19 +187,21 @@ class NekoTelegram:
                                     caption = f"📹 {info['titulo']} - Parte {idx+1}/{len(partes)}\n⏱️ Duración: {int(duracion_parte // 60)}:{int(duracion_parte % 60):02d}\n📦 Tamaño: {tamano_parte:.1f} MB"
                                     
                                     if ruta_thumb and os.path.exists(ruta_thumb):
+                                        with open(ruta_thumb, 'rb') as f:
+                                            thumb_data = f.read()
                                         await client.send_video(
-                                            chat_id=callback_query.message.chat.id,
+                                            chat_id=message.chat.id,
                                             video=parte,
                                             file_name=os.path.basename(parte),
                                             duration=int(duracion_parte),
                                             width=info['ancho'],
                                             height=info['alto'],
-                                            thumb=ruta_thumb,
+                                            thumb=thumb_data,
                                             caption=caption
                                         )
                                     else:
                                         await client.send_video(
-                                            chat_id=callback_query.message.chat.id,
+                                            chat_id=message.chat.id,
                                             video=parte,
                                             file_name=os.path.basename(parte),
                                             duration=int(duracion_parte),
@@ -259,22 +213,24 @@ class NekoTelegram:
                                     if not self.debug:
                                         os.remove(parte)
                             else:
-                                await callback_query.message.reply("❌ Error al dividir el video")
+                                await message.reply("❌ Error al dividir el video")
                         else:
                             if ruta_thumb and os.path.exists(ruta_thumb):
+                                with open(ruta_thumb, 'rb') as f:
+                                    thumb_data = f.read()
                                 await client.send_video(
-                                    chat_id=callback_query.message.chat.id,
+                                    chat_id=message.chat.id,
                                     video=ruta_video,
                                     file_name=os.path.basename(ruta_video),
                                     duration=info['duracion'],
                                     width=info['ancho'],
                                     height=info['alto'],
-                                    thumb=ruta_thumb,
+                                    thumb=thumb_data,
                                     caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
                                 )
                             else:
                                 await client.send_video(
-                                    chat_id=callback_query.message.chat.id,
+                                    chat_id=message.chat.id,
                                     video=ruta_video,
                                     file_name=os.path.basename(ruta_video),
                                     duration=info['duracion'],
@@ -290,89 +246,16 @@ class NekoTelegram:
                                 os.remove(ruta_thumb)
                             if temp_dir and os.path.exists(temp_dir):
                                 shutil.rmtree(temp_dir)
+                        else:
+                            await message.reply(f"🐛 Debug: Modo debug activado. Archivos conservados en: {temp_dir}")
                     else:
-                        await callback_query.message.reply("❌ Error al descargar el video")
-                        
-                except Exception as e:
-                    await callback_query.message.reply(f"❌ Error: {str(e)}")
-                    if self.debug and temp_dir:
-                        await callback_query.message.reply(f"🐛 Debug: Error, archivos conservados en: {temp_dir}")
-                
-                if callback_id in download_options:
-                    del download_options[callback_id]
-                if callback_id in active_callbacks:
-                    del active_callbacks[callback_id]
-                
-                await callback_query.message.delete()
-        
-        elif data.startswith("cancel_"):
-            callback_id = data.replace("cancel_", "")
-            
-            if callback_id in download_options:
-                del download_options[callback_id]
-            if callback_id in active_callbacks:
-                del active_callbacks[callback_id]
-            
-            await callback_query.answer("Descarga cancelada")
-            await callback_query.message.edit_text("❌ Descarga cancelada")
-            await asyncio.sleep(3)
-            await callback_query.message.delete()
-    
-    async def _handle_message(self, client: Client, message: Message):
-        if not message.text:
-            return
-        
-        text = message.text.strip()
-
-        if text.startswith("/start"):
-            await message.reply("Bot is running!")
-        
-        elif text.startswith("https://you") or text.startswith("https://www.youtube"):
-            await message.reply("⬇ Obteniendo información del video...")
-            
-            try:
-                info = obtener_info_youtube(text)
-                
-                if not info['formats']:
-                    await message.reply("❌ No se encontraron formatos disponibles")
-                    return
-                
-                callback_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
-                
-                download_options[callback_id] = {
-                    'url': text,
-                    'titulo': info['titulo'],
-                    'duracion': info['duracion'],
-                    'ancho': info['ancho'],
-                    'alto': info['alto']
-                }
-                
-                active_callbacks[callback_id] = {
-                    'chat_id': message.chat.id,
-                    'message_id': None
-                }
-                
-                buttons = []
-                for fmt in info['formats']:
-                    size_text = f" - {fmt['size_mb']:.1f} MB" if fmt['size_mb'] else " - Tamaño desconocido"
-                    button_text = f"{fmt['type']} {fmt['height']}p{size_text}"
-                    buttons.append([InlineKeyboardButton(button_text, callback_data=f"download_{callback_id}_{fmt['format_id']}")])
-                
-                buttons.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel_{callback_id}")])
-                
-                keyboard = InlineKeyboardMarkup(buttons)
-                
-                msg = await message.reply(
-                    f"📹 {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n\n📹 = Video+Audio | 🎬 = Solo Video | 🎵 = Solo Audio\n\nSelecciona la calidad:",
-                    reply_markup=keyboard
-                )
-                
-                active_callbacks[callback_id]['message_id'] = msg.id
-                
-                asyncio.create_task(cleanup_callback(callback_id, message.chat.id, msg.id))
-                
+                        await message.reply("❌ No se encontró el archivo de video")
+                else:
+                    await message.reply("❌ Error al descargar el video")
             except Exception as e:
                 await message.reply(f"❌ Error: {str(e)}")
+                if self.debug and temp_dir:
+                    await message.reply(f"🐛 Debug: Error, archivos conservados en: {temp_dir}")
     
     def start_flask(self):
         if self.flask_thread and self.flask_thread.is_alive():
