@@ -6,7 +6,6 @@ from PIL import Image
 
 MAX_REINTENTOS = 3
 ESPERA_REINTENTO = 5
-FRAGMENTOS_CONCURRENTES = 3
 
 def convertir_webp_a_jpg(ruta_webp):
     try:
