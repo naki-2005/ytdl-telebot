@@ -26,7 +26,7 @@ def convertir_webp_a_jpg(ruta_webp):
         print(f"Error convirtiendo WEBP a JPG: {e}")
         return None
 
-def descargar_video(url, output_path=None):
+def descargar_video_con_formato(url, format_id, output_path=None):
     for intento in range(1, MAX_REINTENTOS + 1):
         try:
             print(f"⬇ Intento {intento}/{MAX_REINTENTOS}...")
@@ -38,7 +38,7 @@ def descargar_video(url, output_path=None):
             
             ydl_opts = {
                 'outtmpl': outtmpl,
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'format': format_id,
                 'quiet': True,
                 'no_warnings': True,
                 'continuedl': True,
