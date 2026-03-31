@@ -32,6 +32,7 @@ def descargar_video_con_formato(url, format_id, output_path=None):
             print(f"⬇ Intento {intento}/{MAX_REINTENTOS}...")
             
             if output_path:
+                os.makedirs(output_path, exist_ok=True)
                 outtmpl = os.path.join(output_path, '%(title)s.%(ext)s')
             else:
                 outtmpl = '%(title)s.%(ext)s'
@@ -42,10 +43,13 @@ def descargar_video_con_formato(url, format_id, output_path=None):
                 'quiet': True,
                 'no_warnings': True,
                 'continuedl': True,
-                'concurrent_fragment_downloads': FRAGMENTOS_CONCURRENTES,
                 'retries': 10,
                 'writethumbnail': True,
-                'convert_thumbnails': 'jpg'
+                'postprocessors': [{
+                    'key': 'FFmpegThumbnailsConvertor',
+                    'format': 'jpg',
+                    'when': 'before_dl'
+                }]
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -58,35 +62,32 @@ def descargar_video_con_formato(url, format_id, output_path=None):
                 else:
                     ruta_video = f"{titulo}.{extension}"
                 
+                if not os.path.exists(ruta_video):
+                    posibles = glob.glob(os.path.join(output_path, f"{titulo}.*")) if output_path else glob.glob(f"{titulo}.*")
+                    if posibles:
+                        ruta_video = posibles[0]
+                    else:
+                        return None, None
+                
                 ruta_thumb = None
                 nombre_base = os.path.splitext(ruta_video)[0]
                 
                 archivos_thumb = glob.glob(f"{nombre_base}.jpg")
                 if archivos_thumb:
                     ruta_thumb = archivos_thumb[0]
-                    print(f"✅ Miniatura JPG encontrada: {ruta_thumb}")
                 else:
                     archivos_thumb = glob.glob(f"{nombre_base}.webp")
                     if archivos_thumb:
-                        print(f"🔄 Convirtiendo WEBP a JPG: {archivos_thumb[0]}")
                         ruta_thumb = convertir_webp_a_jpg(archivos_thumb[0])
-                        if ruta_thumb:
-                            print(f"✅ Miniatura convertida a JPG: {ruta_thumb}")
-                        else:
-                            print(f"⚠️ Error al convertir miniatura")
-                            ruta_thumb = None
-                    else:
-                        print(f"⚠️ No se encontró miniatura para: {titulo}")
-                        ruta_thumb = None
                 
-                print(f"✅ Video descargado: {ruta_video}")
                 return ruta_video, ruta_thumb
             
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ Error en intento {intento}: {e}")
             if intento < MAX_REINTENTOS:
                 print(f"🔄 Reintentando en {ESPERA_REINTENTO} segundos...")
                 time.sleep(ESPERA_REINTENTO)
             else:
-                print("🚫 No se pudo completar la descarga.")
-                return None
+                return None, None
+    
+    return None, None
