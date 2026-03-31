@@ -27,6 +27,20 @@ async def cleanup_callback(callback_id, chat_id, message_id):
     if callback_id in download_options:
         del download_options[callback_id]
 
+async def edit_progress_message(progress_message, current, total, etapa="Subiendo"):
+    porcentaje = (current / total) * 100
+    barra = "▓" * int(porcentaje // 10) + "░" * (10 - int(porcentaje // 10))
+    texto = f"{etapa}: {porcentaje:.1f}%\n[{barra}]\n{current / (1024 * 1024):.1f} MB / {total / (1024 * 1024):.1f} MB"
+    try:
+        await progress_message.edit_text(texto)
+    except:
+        pass
+
+def progress_callback(progress_message, etapa="Subiendo"):
+    def callback(current, total):
+        asyncio.create_task(edit_progress_message(progress_message, current, total, etapa))
+    return callback
+
 @app.route("/")
 def base_flask():
     return "Bot is running!"
@@ -205,7 +219,9 @@ class NekoTelegram:
                 info = download_options[callback_id]
                 
                 await callback_query.answer("⬇ Iniciando descarga...")
-                await callback_query.message.edit_text("⬇ Procesando tu descarga...")
+                
+                progress_msg = await callback_query.message.reply("⏳ Iniciando descarga...")
+                await callback_query.message.delete()
                 
                 temp_dir = None
                 
@@ -213,22 +229,31 @@ class NekoTelegram:
                     temp_dir = os.path.join(os.getcwd(), f"temp_{uuid.uuid4().hex}")
                     os.makedirs(temp_dir, exist_ok=True)
                     
-                    resultado = helper.descargar_video_con_formato(info['url'], format_id, output_path=temp_dir)
+                    resultado = helper.descargar_video_con_formato(
+                        info['url'], 
+                        format_id, 
+                        output_path=temp_dir,
+                        progress_callback=progress_callback(progress_msg, "📥 Descargando")
+                    )
                     
                     if resultado and resultado[0] and os.path.exists(resultado[0]):
                         ruta_video, ruta_thumb = resultado
                         tamano_video = os.path.getsize(ruta_video) / (1024 * 1024)
                         
+                        await progress_msg.edit_text("📤 Subiendo video a Telegram...")
+                        
                         if tamano_video > self.tamano_limite:
-                            await callback_query.message.reply(f"📦 Video de {tamano_video:.1f} MB excede el límite de {self.tamano_limite} MB. Dividiendo en partes...")
+                            await progress_msg.edit_text(f"📦 Video de {tamano_video:.1f} MB excede el límite de {self.tamano_limite} MB. Dividiendo en partes...")
                             
                             nombre_base = os.path.splitext(os.path.basename(ruta_video))[0]
                             partes = dividir_video_por_tamano(ruta_video, self.tamano_limite, temp_dir, nombre_base)
                             
                             if partes:
-                                await callback_query.message.reply(f"✅ Video dividido en {len(partes)} partes")
+                                await progress_msg.edit_text(f"✅ Video dividido en {len(partes)} partes\n\n📤 Subiendo partes...")
                                 
                                 for idx, parte in enumerate(partes):
+                                    await progress_msg.edit_text(f"📤 Subiendo parte {idx+1}/{len(partes)}...")
+                                    
                                     duracion_parte = obtener_duracion_video(parte)
                                     tamano_parte = os.path.getsize(parte) / (1024 * 1024)
                                     
@@ -243,7 +268,8 @@ class NekoTelegram:
                                             width=info['ancho'],
                                             height=info['alto'],
                                             thumb=ruta_thumb,
-                                            caption=caption
+                                            caption=caption,
+                                            progress=progress_callback(progress_msg, f"📤 Subiendo parte {idx+1}/{len(partes)}")
                                         )
                                     else:
                                         await client.send_video(
@@ -253,13 +279,18 @@ class NekoTelegram:
                                             duration=int(duracion_parte),
                                             width=info['ancho'],
                                             height=info['alto'],
-                                            caption=caption
+                                            caption=caption,
+                                            progress=progress_callback(progress_msg, f"📤 Subiendo parte {idx+1}/{len(partes)}")
                                         )
                                     
                                     if not self.debug:
                                         os.remove(parte)
+                                
+                                await progress_msg.edit_text(f"✅ {len(partes)} partes enviadas correctamente")
+                                await asyncio.sleep(3)
+                                await progress_msg.delete()
                             else:
-                                await callback_query.message.reply("❌ Error al dividir el video")
+                                await progress_msg.edit_text("❌ Error al dividir el video")
                         else:
                             if ruta_thumb and os.path.exists(ruta_thumb):
                                 await client.send_video(
@@ -270,7 +301,8 @@ class NekoTelegram:
                                     width=info['ancho'],
                                     height=info['alto'],
                                     thumb=ruta_thumb,
-                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB",
+                                    progress=progress_callback(progress_msg, "📤 Subiendo video")
                                 )
                             else:
                                 await client.send_video(
@@ -280,8 +312,13 @@ class NekoTelegram:
                                     duration=info['duracion'],
                                     width=info['ancho'],
                                     height=info['alto'],
-                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB",
+                                    progress=progress_callback(progress_msg, "📤 Subiendo video")
                                 )
+                            
+                            await progress_msg.edit_text("✅ Video enviado correctamente")
+                            await asyncio.sleep(3)
+                            await progress_msg.delete()
                         
                         if not self.debug:
                             if os.path.exists(ruta_video):
@@ -291,19 +328,17 @@ class NekoTelegram:
                             if temp_dir and os.path.exists(temp_dir):
                                 shutil.rmtree(temp_dir)
                     else:
-                        await callback_query.message.reply("❌ Error al descargar el video")
+                        await progress_msg.edit_text("❌ Error al descargar el video")
                         
                 except Exception as e:
-                    await callback_query.message.reply(f"❌ Error: {str(e)}")
+                    await progress_msg.edit_text(f"❌ Error: {str(e)}")
                     if self.debug and temp_dir:
-                        await callback_query.message.reply(f"🐛 Debug: Error, archivos conservados en: {temp_dir}")
+                        await progress_msg.reply(f"🐛 Debug: Error, archivos conservados en: {temp_dir}")
                 
                 if callback_id in download_options:
                     del download_options[callback_id]
                 if callback_id in active_callbacks:
                     del active_callbacks[callback_id]
-                
-                await callback_query.message.delete()
         
         elif data.startswith("cancel_"):
             callback_id = data.replace("cancel_", "")
