@@ -29,6 +29,7 @@ def descargar_video_con_formato(url, format_id, output_path=None):
     for intento in range(1, MAX_REINTENTOS + 1):
         try:
             print(f"⬇ Intento {intento}/{MAX_REINTENTOS}...")
+            print(f"📥 Formato: {format_id}")
             
             if output_path:
                 os.makedirs(output_path, exist_ok=True)
@@ -39,8 +40,8 @@ def descargar_video_con_formato(url, format_id, output_path=None):
             ydl_opts = {
                 'outtmpl': outtmpl,
                 'format': format_id,
-                'quiet': True,
-                'no_warnings': True,
+                'quiet': False,
+                'no_warnings': False,
                 'continuedl': True,
                 'retries': 10,
                 'writethumbnail': True,
@@ -48,25 +49,30 @@ def descargar_video_con_formato(url, format_id, output_path=None):
                     'key': 'FFmpegThumbnailsConvertor',
                     'format': 'jpg',
                     'when': 'before_dl'
-                }]
+                }],
+                'merge_output_format': 'mp4'
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 titulo = info.get('title', 'video')
-                extension = info.get('ext', 'mp4')
                 
                 if output_path:
-                    ruta_video = os.path.join(output_path, f"{titulo}.{extension}")
+                    posibles = glob.glob(os.path.join(output_path, f"{titulo}.*"))
                 else:
-                    ruta_video = f"{titulo}.{extension}"
+                    posibles = glob.glob(f"{titulo}.*")
                 
-                if not os.path.exists(ruta_video):
-                    posibles = glob.glob(os.path.join(output_path, f"{titulo}.*")) if output_path else glob.glob(f"{titulo}.*")
-                    if posibles:
-                        ruta_video = posibles[0]
-                    else:
-                        return None, None
+                if not posibles:
+                    return None, None
+                
+                ruta_video = None
+                for archivo in posibles:
+                    if archivo.endswith(('.mp4', '.mkv', '.webm')):
+                        ruta_video = archivo
+                        break
+                
+                if not ruta_video:
+                    ruta_video = posibles[0]
                 
                 ruta_thumb = None
                 nombre_base = os.path.splitext(ruta_video)[0]
