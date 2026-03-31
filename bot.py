@@ -175,7 +175,6 @@ class NekoTelegram:
     
     async def _handle_callback(self, client: Client, callback_query: CallbackQuery):
         data = callback_query.data
-        user_id = callback_query.from_user.id
         
         if data.startswith("download_"):
             parts = data.split("_")
@@ -220,8 +219,6 @@ class NekoTelegram:
                                     caption = f"📹 {info['titulo']} - Parte {idx+1}/{len(partes)}\n⏱️ Duración: {int(duracion_parte // 60)}:{int(duracion_parte % 60):02d}\n📦 Tamaño: {tamano_parte:.1f} MB"
                                     
                                     if ruta_thumb and os.path.exists(ruta_thumb):
-                                        with open(ruta_thumb, 'rb') as f:
-                                            thumb_data = f.read()
                                         await client.send_video(
                                             chat_id=callback_query.message.chat.id,
                                             video=parte,
@@ -229,7 +226,7 @@ class NekoTelegram:
                                             duration=int(duracion_parte),
                                             width=info['ancho'],
                                             height=info['alto'],
-                                            thumb=thumb_data,
+                                            thumb=ruta_thumb,
                                             caption=caption
                                         )
                                     else:
@@ -249,8 +246,6 @@ class NekoTelegram:
                                 await callback_query.message.reply("❌ Error al dividir el video")
                         else:
                             if ruta_thumb and os.path.exists(ruta_thumb):
-                                with open(ruta_thumb, 'rb') as f:
-                                    thumb_data = f.read()
                                 await client.send_video(
                                     chat_id=callback_query.message.chat.id,
                                     video=ruta_video,
@@ -258,7 +253,7 @@ class NekoTelegram:
                                     duration=info['duracion'],
                                     width=info['ancho'],
                                     height=info['alto'],
-                                    thumb=thumb_data,
+                                    thumb=ruta_thumb,
                                     caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
                                 )
                             else:
