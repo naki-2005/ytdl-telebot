@@ -183,8 +183,10 @@ class NekoTelegram:
                                 for idx, parte in enumerate(partes):
                                     duracion_parte = obtener_duracion_video(parte)
                                     tamano_parte = os.path.getsize(parte) / (1024 * 1024)
+                                    minutos = int(duracion_parte // 60)
+                                    segundos = int(duracion_parte % 60)
                                     
-                                    caption = f"📹 {info['titulo']} - Parte {idx+1}/{len(partes)}\n⏱️ Duración: {int(duracion_parte // 60)}:{int(duracion_parte % 60):02d}\n📦 Tamaño: {tamano_parte:.1f} MB"
+                                    caption = f"📹 {info['titulo']} - Parte {idx+1}/{len(partes)}\n⏱️ Duración: {minutos}:{segundos:02d}\n📦 Tamaño: {tamano_parte:.1f} MB"
                                     
                                     if ruta_thumb and os.path.exists(ruta_thumb):
                                         with open(ruta_thumb, 'rb') as f:
@@ -215,6 +217,10 @@ class NekoTelegram:
                             else:
                                 await message.reply("❌ Error al dividir el video")
                         else:
+                            minutos = int(info['duracion'] // 60)
+                            segundos = int(info['duracion'] % 60)
+                            caption = f"✅ {info['titulo']}\n⏱️ Duración: {minutos}:{segundos:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                            
                             if ruta_thumb and os.path.exists(ruta_thumb):
                                 with open(ruta_thumb, 'rb') as f:
                                     thumb_data = f.read()
@@ -226,7 +232,7 @@ class NekoTelegram:
                                     width=info['ancho'],
                                     height=info['alto'],
                                     thumb=thumb_data,
-                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                                    caption=caption
                                 )
                             else:
                                 await client.send_video(
@@ -236,7 +242,7 @@ class NekoTelegram:
                                     duration=info['duracion'],
                                     width=info['ancho'],
                                     height=info['alto'],
-                                    caption=f"✅ {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n📦 Tamaño: {tamano_video:.1f} MB"
+                                    caption=caption
                                 )
                         
                         if not self.debug:
