@@ -43,28 +43,44 @@ def obtener_info_youtube(url):
         with yt_dlp.YoutubeDL(opciones) as ydl:
             info = ydl.extract_info(url, download=False)
             formats = []
+            
             for f in info.get('formats', []):
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                    height = f.get('height', 0)
-                    if height:
-                        size_mb = None
-                        if f.get('filesize'):
-                            size_mb = f.get('filesize') / (1024 * 1024)
-                        elif f.get('filesize_approx'):
-                            size_mb = f.get('filesize_approx') / (1024 * 1024)
-                        
-                        formats.append({
-                            'format_id': f['format_id'],
-                            'height': height,
-                            'size_mb': size_mb
-                        })
+                height = f.get('height', 0)
+                if not height:
+                    continue
+                
+                format_id = f['format_id']
+                vcodec = f.get('vcodec', 'none')
+                acodec = f.get('acodec', 'none')
+                filesize = f.get('filesize') or f.get('filesize_approx', 0)
+                size_mb = filesize / (1024 * 1024) if filesize else None
+                
+                if vcodec != 'none' and acodec != 'none':
+                    format_type = "📹"
+                elif vcodec != 'none' and acodec == 'none':
+                    format_type = "🎬"
+                elif vcodec == 'none' and acodec != 'none':
+                    format_type = "🎵"
+                else:
+                    continue
+                
+                formats.append({
+                    'format_id': format_id,
+                    'height': height,
+                    'size_mb': size_mb,
+                    'type': format_type,
+                    'vcodec': vcodec,
+                    'acodec': acodec
+                })
             
             formats.sort(key=lambda x: x['height'], reverse=True)
+            
             unique_formats = []
-            seen_heights = set()
+            seen = set()
             for f in formats:
-                if f['height'] not in seen_heights:
-                    seen_heights.add(f['height'])
+                key = f"{f['height']}_{f['type']}"
+                if key not in seen:
+                    seen.add(key)
                     unique_formats.append(f)
             
             return {
@@ -72,7 +88,7 @@ def obtener_info_youtube(url):
                 'ancho': info.get('width', 0),
                 'alto': info.get('height', 0),
                 'titulo': info.get('title', ''),
-                'formats': unique_formats[:5]
+                'formats': unique_formats[:10]
             }
     except Exception as e:
         print(f"Error obteniendo info: {e}")
@@ -338,8 +354,8 @@ class NekoTelegram:
                 
                 buttons = []
                 for fmt in info['formats']:
-                    size_text = f" - {fmt['size_mb']:.1f} MB" if fmt['size_mb'] else ""
-                    button_text = f"{fmt['height']}p{size_text}"
+                    size_text = f" - {fmt['size_mb']:.1f} MB" if fmt['size_mb'] else " - Tamaño desconocido"
+                    button_text = f"{fmt['type']} {fmt['height']}p{size_text}"
                     buttons.append([InlineKeyboardButton(button_text, callback_data=f"download_{callback_id}_{fmt['format_id']}")])
                 
                 buttons.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel_{callback_id}")])
@@ -347,7 +363,7 @@ class NekoTelegram:
                 keyboard = InlineKeyboardMarkup(buttons)
                 
                 msg = await message.reply(
-                    f"📹 {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n\nSelecciona la calidad:",
+                    f"📹 {info['titulo']}\n⏱️ Duración: {info['duracion']//60}:{info['duracion']%60:02d}\n\n📹 = Video+Audio | 🎬 = Solo Video | 🎵 = Solo Audio\n\nSelecciona la calidad:",
                     reply_markup=keyboard
                 )
                 
